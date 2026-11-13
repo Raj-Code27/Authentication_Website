@@ -23,7 +23,7 @@ app.use(cors({
 app.use(cookieParser());
 app.use("/api", authrouter);
 
-app.listen(port, () => {
+app.listen(port,"0.0.0.0", () => {
   connectdb();
-  console.log("server is running on port", port);
+  console.log("server is running on port", { port });
 });
