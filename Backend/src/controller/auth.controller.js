@@ -2,6 +2,20 @@ import generatetoken from "../db/token.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 
+const isProduction =
+  process.env.NODE_ENV === "production" ||
+  process.env.NODE_ENVIRONMENT === "production";
+const authCookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000
+};
+const authCookieClearOptions = {
+  httpOnly: authCookieOptions.httpOnly,
+  secure: authCookieOptions.secure,
+  sameSite: authCookieOptions.sameSite
+};
 
 //signup api function 
 
@@ -56,12 +70,7 @@ export const signup = async (req, res) => {
 
     // now we have to store that token into cookies 
 
-    res.cookie("token",token,{
-        httpOnly:true,
-        secure:process.env.NODE_ENVIRONMENT  == "production",
-        sameSite:"strict",
-        maxAge:7*24*60*60*1000
-    })
+    res.cookie("token", token, authCookieOptions);
 
     return res.status(201).json({
       user: {
@@ -115,12 +124,7 @@ export const login=async (req,res)=>{
 
     // now we have to store that token into cookies 
 
-        res.cookie("token",token,{
-            httpOnly:true,
-            secure:process.env.NODE_ENVIRONMENT  == "production",
-            sameSite:"strict",
-            maxAge:7*24*60*60*1000
-        })
+        res.cookie("token", token, authCookieOptions);
         
         return res.status(201).json({
             user: {
@@ -142,11 +146,7 @@ export const login=async (req,res)=>{
 // logout api function to clear the cookie and logout the useer 
 export const logout=async (req,res)=>{
     try{
-        res.clearCookie("token",{
-            httpOnly:true,
-            secure:process.env.NODE_ENVIRONMENT  == "production",
-            sameSite:"strict"
-        });
+        res.clearCookie("token", authCookieClearOptions);
         res.status(200).json({
             message:"Logout successfully"
         })
