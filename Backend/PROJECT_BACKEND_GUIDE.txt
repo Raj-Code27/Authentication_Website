@@ -1,0 +1,306 @@
+BACKEND PROJECT GUIDE
+=====================
+
+Project: New_Authentication
+Backend stack: Node.js, Express 5, MongoDB, Mongoose, JWT, bcryptjs
+
+This guide explains the backend as it currently exists in this project. It
+also points out important limitations so you can describe the implementation
+accurately in an interview and know what to improve before production.
+
+
+1. WHAT THE BACKEND DOES
+------------------------
+
+This is a small authentication API. It supports:
+
+- Account signup: validate fields, check for duplicate email/username, hash
+  the password, save a user document, and issue a JWT in an HTTP-only cookie.
+- Login: find an account by email, compare the submitted password with its
+  stored bcrypt hash, and issue the same kind of cookie.
+- Logout: clear the authentication cookie in the browser.
+
+The backend does not currently have a profile endpoint, authentication
+middleware, protected routes, roles/permissions, password reset, email
+verification, refresh-token flow, or automated backend tests.
+
+
+2. DIRECTORY MAP
+----------------
+
+server.js
+  Creates the Express app, loads environment variables, installs middleware,
+  mounts routes, and starts the HTTP server.
+
+src/routes/auth.route.js
+  Maps HTTP methods and URL paths to controller functions.
+
+src/controller/auth.controller.js
+  Implements signup, login, and logout request/response behavior.
+
+src/models/user.model.js
+  Defines the MongoDB User schema using Mongoose.
+
+src/db/db.js
+  Connects Mongoose to MongoDB.
+
+src/db/token.js
+  Signs a JWT for a user's database ID.
+
+package.json
+  Declares backend dependencies and npm commands.
+
+
+3. REQUEST FLOW
+---------------
+
+Example signup request:
+
+1. The browser sends POST /api/signup with a JSON body.
+2. Express middleware parses JSON and configures CORS/cookies.
+3. auth.route.js selects the signup controller.
+4. The controller checks required fields, email format, password length,
+   and whether email or username is already taken.
+5. bcrypt hashes the password. The plain password is not saved.
+6. Mongoose creates a user document in MongoDB.
+7. token.js signs a JWT with the user's MongoDB ID.
+8. The controller sets the JWT as an HTTP-only cookie and returns a user
+   object without the password.
+
+Login follows the same routing and middleware path. It looks up the
+normalized email, uses bcrypt.compare, signs a new token, and sets the cookie.
+
+Logout sends a response that expires the token cookie in the browser. The
+current implementation does not revoke a JWT on the server; a copied token
+can remain valid until its expiry (seven days).
+
+
+4. HTTP API
+-----------
+
+Base path: /api
+
+POST /api/signup
+Request JSON:
+  {
+    "firstname": "Ada",
+    "lastname": "Lovelace",
+    "username": "ada",
+    "email": "ada@example.com",
+    "password": "a-password-at-least-8-characters"
+  }
+
+Expected success: HTTP 201 and a user object containing firstname, lastname,
+email, and username. The password is not included. A token cookie is set.
+Typical errors: HTTP 400 for invalid/missing input, HTTP 409 for a duplicate
+email or username, HTTP 500 for an unexpected server failure.
+
+POST /api/login
+Request JSON:
+  {
+    "email": "ada@example.com",
+    "password": "the-account-password"
+  }
+
+Expected success: HTTP 201 and a public user object; a token cookie is set.
+Current errors include HTTP 400 for missing fields, unknown account, or
+incorrect password, and HTTP 500 for an unexpected failure.
+
+POST /api/logout
+No request body is required.
+Expected success: HTTP 200 with a message and an expired token cookie.
+
+The frontend uses fetch with credentials: "include". This is necessary for
+the browser to accept/send cookies on cross-origin API calls.
+
+
+5. IMPORTANT IMPLEMENTATION CONCEPTS
+------------------------------------
+
+Node.js and ES modules
+- package.json sets "type": "module", so source uses import/export syntax.
+- Node.js runs the JavaScript server outside the browser.
+
+Express
+- Express creates the HTTP server and handles routing/middleware.
+- app.use installs middleware for requests.
+- express.json() parses JSON request bodies into req.body.
+- express.urlencoded() parses URL-encoded request bodies.
+- app.use("/api", authrouter) prefixes the router paths with /api.
+
+Middleware order
+- Middleware runs in the order it is registered.
+- JSON parsing must run before controllers read req.body.
+- cookie-parser reads cookies and exposes them through req.cookies.
+- CORS controls which browser origins may read responses and whether cookies
+  are accepted cross-origin.
+
+Router/controller separation
+- The router describes endpoint-to-handler mapping.
+- Controllers implement endpoint behavior and write HTTP responses.
+- Keeping routing separate from business logic makes the application easier
+  to extend and test.
+
+MongoDB and Mongoose
+- MongoDB stores data as BSON documents in collections.
+- Mongoose provides schemas, models, validation, and database operations.
+- User is a Mongoose model based on userschema; Mongoose maps it to a
+  collection (normally "users").
+- timestamps: true adds createdAt and updatedAt.
+- required: true is schema validation.
+- unique: true creates/enforces a database unique index; it is not merely a
+  regular validation rule. Duplicate-key errors can still happen after a
+  pre-check because concurrent requests can race.
+- findOne reads a matching document; create inserts a document.
+
+Passwords and bcrypt
+- Passwords must never be stored as plain text.
+- bcrypt.hash(password, 10) creates a salted password hash (10 is the cost
+  factor).
+- bcrypt.compare(candidate, storedHash) checks a login password safely.
+- A hash is intentionally not reversible; the server verifies a candidate
+  instead of decrypting a password.
+
+JWT
+- A JWT is a signed token containing claims; this project puts the user ID in
+  its payload and gives it a seven-day expiry.
+- JWT signing needs a secret from the environment. Keep it private, strong,
+  and different in each environment.
+- Signing a JWT is not the same as authenticating protected requests. A
+  future middleware must read the cookie, verify the signature/expiry, and
+  attach the authenticated user to the request.
+
+HTTP-only cookie
+- httpOnly prevents ordinary page JavaScript from reading the token cookie.
+- secure should be true over HTTPS in production.
+- sameSite controls some cross-site cookie sending behavior.
+- maxAge controls browser persistence.
+- The frontend and backend must have compatible cookie and CORS settings.
+- Cookie authentication also requires consideration of CSRF defenses.
+
+Environment variables
+- dotenv loads Backend/.env values into process.env for local development.
+- Do not commit .env or put real credentials in documentation.
+- Code references MONGODB_URL, JWT_SECRET, PORT, FRONTEND_URL, and
+  NODE_ENVIRONMENT.
+
+Async operations and errors
+- Database calls and password hashing are asynchronous and awaited.
+- Controllers catch unexpected errors and return JSON with HTTP 500.
+- Validation errors should be returned as 4xx responses, not hidden as 500.
+- The current DB connection helper logs a generic error but does not rethrow;
+  startup can continue even if MongoDB is unavailable. This should be fixed.
+
+HTTP status codes used
+- 200: successful logout.
+- 201: successful creation (signup; login currently also uses 201, though
+  200 is more conventional for login).
+- 400: invalid/missing request input or rejected login credentials.
+- 409: signup conflicts with an existing email/username.
+- 500: unexpected server error.
+
+
+6. LOCAL SETUP AND RUNNING
+--------------------------
+
+Prerequisites:
+- A supported Node.js version and npm.
+- MongoDB reachable by the URL stored in Backend/.env.
+
+From the project root:
+  cd Backend
+  npm install
+  npm run dev
+
+For regular start without Nodemon:
+  npm start
+
+The default server port is 8000. The backend uses MongoDB URL and JWT secret
+from the environment. Configure these in Backend/.env locally; do not copy
+secrets into source control. The frontend default API base is
+http://localhost:8000/api. Backend CORS defaults to http://localhost:5173.
+
+Expected local environment variable names (use your own values):
+  PORT=8000
+  MONGODB_URL=<your MongoDB connection URL>
+  JWT_SECRET=<a long random secret>
+  FRONTEND_URL=http://localhost:5173
+  NODE_ENVIRONMENT=development
+
+The current cookie code checks NODE_ENVIRONMENT for the word "production".
+Many hosting platforms conventionally set NODE_ENV=production instead. Make
+these names consistent before deployment.
+
+
+7. HOW TO TRY THE API
+---------------------
+
+Use curl or an API client. Replace sample values and keep the cookie jar for
+testing cookie behavior:
+
+Signup:
+  curl -i -c cookies.txt -H "Content-Type: application/json" \
+    -d '{"firstname":"Ada","lastname":"Lovelace","username":"ada_demo","email":"ada-demo@example.com","password":"example-password-123"}' \
+    http://localhost:8000/api/signup
+
+Login:
+  curl -i -c cookies.txt -b cookies.txt -H "Content-Type: application/json" \
+    -d '{"email":"ada-demo@example.com","password":"example-password-123"}' \
+    http://localhost:8000/api/login
+
+Logout:
+  curl -i -b cookies.txt -c cookies.txt -X POST \
+    http://localhost:8000/api/logout
+
+The sample account may already exist after a previous test. Use a fresh
+username and email for signup. Do not use a real password in shell history.
+
+
+8. CURRENT LIMITATIONS AND GOOD NEXT STEPS
+------------------------------------------
+
+These are areas to understand and improve; they are not all implemented yet.
+
+1. Authentication is not enforced on any protected endpoint because there
+   are no auth-verification middleware or protected routes.
+2. Add GET /api/me to verify the JWT cookie and return the current user's
+   public profile. Use it to restore login state after a page refresh.
+3. Improve error handling. Do not expose internal errors, but log useful
+   structured server-side details. Avoid returning "User not found" versus
+   "Invalid password" if account enumeration is a concern.
+4. Connect to MongoDB before accepting requests. If connection fails, fail
+   startup or report readiness as unavailable rather than running partially.
+5. Use one environment convention (normally NODE_ENV) consistently.
+6. Add rate limiting to signup/login, request size limits, and stronger
+   input validation (length bounds, username policy, password policy).
+7. Add email normalization at the schema/data boundary and ensure unique
+   indexes are created and verified in MongoDB.
+8. Add automated tests for validation, duplicate users, successful signup,
+   login password matching, cookie options, and logout.
+9. In production, use HTTPS, exact CORS origins, secure cookies, a strong
+   JWT secret, and secret management outside the repository.
+10. Consider CSRF protection for cookie-authenticated state-changing routes.
+11. Decide on token revocation/session strategy. Clearing a browser cookie
+    does not invalidate a stateless JWT already copied elsewhere.
+12. Login currently returns status 201; use 200 for a successful login.
+13. Give signup/login consistent, non-enumerating credential failure
+    responses and consider account lockout/rate limiting carefully.
+
+
+9. INTERVIEW EXPLANATION FOR THIS PROJECT
+-----------------------------------------
+
+"This is a Node.js and Express authentication API backed by MongoDB through
+Mongoose. The router maps signup, login, and logout endpoints to async
+controllers. Signup validates and normalizes user input, checks for existing
+email/username, hashes the password with bcrypt, stores a user document, and
+issues a signed JWT in an HTTP-only cookie. Login looks up the normalized
+email and compares the submitted password with the stored hash. Logout clears
+the cookie. CORS is configured for the frontend and credentials are enabled
+because the frontend uses cookie-based authentication. The next important
+step is JWT verification middleware and a protected current-user route; at
+present, the project issues tokens but does not use them to guard APIs."
+
+Be clear that the last sentence is a current limitation. Do not claim that
+protected-route authentication, refresh tokens, or CSRF defenses are already
+implemented.

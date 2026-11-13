@@ -1,0 +1,407 @@
+BACKEND INTERVIEW CONCEPTS AND QUESTIONS
+========================================
+
+Use this as a study sheet. Topics marked "in this project" are visible in
+the New_Authentication backend. Other topics are common backend interview
+material and useful next steps.
+
+
+1. HTTP, APIs, AND REST
+-----------------------
+
+Know:
+- HTTP request/response model: method, URL, headers, body, status code.
+- Common methods: GET reads, POST creates/actions, PUT replaces, PATCH
+  partially updates, DELETE removes.
+- REST resource-oriented design and stateless requests.
+- JSON request/response format and Content-Type.
+- Idempotency: repeating an operation has the same intended effect. GET,
+  PUT, and DELETE are expected to be idempotent by convention; POST usually
+  is not.
+- API versioning, pagination, filtering, sorting, and consistent error shapes.
+
+This project: POST /api/signup, POST /api/login, POST /api/logout.
+
+Questions:
+Q: What is REST?
+A: An architectural style for networked APIs, commonly using resources,
+   standard HTTP methods, stateless requests, and representations such as
+   JSON.
+
+Q: What is the difference between PUT and PATCH?
+A: PUT conventionally replaces a resource representation; PATCH applies a
+   partial update.
+
+Q: What status codes should an API use?
+A: Use codes that communicate outcomes: 2xx success, 4xx client/request
+   problem, and 5xx server problem. Examples include 200, 201, 400, 401,
+   403, 404, 409, 422, and 500.
+
+Q: Is login a resource creation?
+A: Usually it is an authentication action and responds 200. This project
+   currently returns 201, which can be improved for conventional semantics.
+
+
+2. NODE.JS AND JAVASCRIPT
+-------------------------
+
+Know:
+- Node.js runs JavaScript using V8 and provides server APIs.
+- Event loop and non-blocking I/O allow Node to handle many I/O operations
+  without one thread per request.
+- Async operations: callbacks, Promises, async/await.
+- await pauses the current async function until a Promise settles; it does
+  not block the entire Node.js process.
+- Exceptions in async code must be caught or passed to error middleware.
+- ES modules use import/export; this project sets "type": "module".
+- Avoid CPU-heavy synchronous work on the event loop.
+
+Questions:
+Q: Is Node.js single-threaded?
+A: JavaScript callbacks execute on the event loop thread, but Node and its
+   runtime use other threads/workers for some tasks. The model is
+   event-driven and non-blocking, not simply "only one thread exists."
+
+Q: What is the event loop?
+A: The runtime mechanism that schedules and executes callbacks for timers,
+   I/O completion, and other queued work.
+
+Q: What is the difference between concurrency and parallelism?
+A: Concurrency is managing multiple tasks in overlapping time; parallelism
+   is executing tasks simultaneously on multiple execution units.
+
+
+3. EXPRESS AND MIDDLEWARE
+-------------------------
+
+Know:
+- An Express app is a chain of middleware and route handlers.
+- Middleware gets req, res, and next; it can inspect/modify a request, end
+  the response, or pass control onward.
+- Middleware ordering matters.
+- express.json parses JSON; cookie-parser parses cookies.
+- Routers group related endpoints and can be mounted under a prefix.
+- Central error-handling middleware conventionally has four parameters:
+  (err, req, res, next).
+- Validate input at the boundary, and do not trust client-provided data.
+
+This project: server.js installs JSON/urlencoded parsing, CORS, and cookie
+parsing; auth.route.js mounts the authentication router at /api.
+
+Questions:
+Q: What is middleware?
+A: A function in the request-response pipeline that can run logic, modify
+   request/response, end the response, or call next().
+
+Q: Why does middleware order matter?
+A: Requests pass through in registration order. A controller cannot read
+   parsed JSON unless the JSON parser ran first.
+
+Q: Why use a router?
+A: It modularizes related routes and lets the main app mount them with a
+   common prefix or middleware.
+
+
+4. DATABASES, MONGODB, AND MONGOOSE
+-----------------------------------
+
+Know:
+- Relational databases use tables/rows and relationships; MongoDB stores
+  BSON documents in collections.
+- Schema design determines which data is embedded versus referenced.
+- Mongoose schemas define fields, types, validation, indexes, and options.
+- Models perform queries and writes.
+- Unique indexes enforce uniqueness at the database level.
+- A pre-insert "does this exist?" query is not enough to prevent races:
+  database unique indexes are authoritative; handle duplicate-key errors.
+- Indexes accelerate reads but consume storage and slow writes.
+- Transactions provide atomic multi-operation changes when supported and
+  needed.
+- Connection pooling reuses database connections.
+- Never build unsafe query objects directly from untrusted input.
+
+This project: User model, findOne, create, unique email/username,
+timestamps, and MongoDB connection through Mongoose.
+
+Questions:
+Q: What is an index?
+A: A data structure that helps a database find records faster, at the cost
+   of extra storage and write/update work.
+
+Q: What is a race condition in duplicate checking?
+A: Two requests can both see that an email is unused and then both try to
+   create it. A unique database index and duplicate-key handling closes that
+   gap.
+
+Q: What is a MongoDB document?
+A: A BSON record stored in a collection, typically represented as a
+   JavaScript object by the driver/Mongoose.
+
+Q: What does Mongoose do?
+A: It provides Node.js models, schema definitions, casting, validation, and
+   helpers for MongoDB operations.
+
+
+5. AUTHENTICATION AND AUTHORIZATION
+-----------------------------------
+
+Know the distinction:
+- Authentication asks: who are you?
+- Authorization asks: what are you allowed to do?
+
+Know:
+- Passwords should be salted and hashed with a password hashing algorithm
+  such as bcrypt or Argon2; do not encrypt or store them as plain text.
+- bcrypt salts hashes and supports a configurable work factor.
+- JWTs are signed tokens with claims and optional expiry; signing does not
+  encrypt the payload.
+- A JWT verifier must validate signature and expiry before trusting claims.
+- A cookie carrying a JWT is a transport/storage choice; JWT itself is not
+  inherently stored in a cookie.
+- HTTP-only cookies reduce access from browser JavaScript, but do not alone
+  prevent CSRF or all XSS impact.
+- Session-based auth stores session state server-side; JWT auth is often
+  stateless, though tokens can be revoked with extra state.
+- Access and refresh tokens, rotation, expiry, logout, and revocation are
+  design decisions.
+- Auth middleware should verify the credential, load/identify the user, and
+  reject unauthenticated access with 401.
+- Authorization failures generally return 403.
+
+This project: bcrypt password hashing/comparison and JWT issuance in an
+HTTP-only cookie. There is currently no JWT-verification middleware or
+protected API endpoint.
+
+Questions:
+Q: Why hash passwords instead of encrypting them?
+A: Password verification only requires comparison. A one-way password hash
+   limits exposure if the database is leaked; encryption is reversible.
+
+Q: What is a salt?
+A: Random data used by a password hash to make identical passwords produce
+   different stored hashes and frustrate precomputed attacks. bcrypt handles
+   salts as part of its format.
+
+Q: Is a JWT encrypted?
+A: Usually no. A signed JWT payload can be decoded; the signature detects
+   tampering. Do not put secrets in its payload.
+
+Q: What should auth middleware do?
+A: Extract the token, verify its signature and expiry, validate the user
+   identity as needed, attach identity to the request, or return 401.
+
+Q: Why does clearing a JWT cookie not revoke the token?
+A: It removes the browser's copy only. A copy elsewhere remains cryptographically
+   valid until expiry unless the server maintains revocation/session state.
+
+Q: What is the difference between 401 and 403?
+A: 401 means valid authentication is absent/failed; 403 means the identity is
+   known but lacks permission.
+
+
+6. COOKIES, CORS, AND CSRF
+--------------------------
+
+Know:
+- Cookies are browser-managed key/value data sent with matching requests.
+- HttpOnly blocks direct JavaScript reads; Secure restricts to HTTPS;
+  SameSite limits some cross-site sending.
+- CORS is a browser-enforced policy controlling cross-origin response access.
+  It is not authentication and does not stop non-browser clients.
+- Credentialed CORS requires an explicit allowed origin; wildcard origin
+  cannot be used with credentials.
+- Browser fetch must use credentials: "include" for cross-origin cookies.
+- CSRF abuses a browser's automatic inclusion of cookies. Mitigations can
+  include SameSite, CSRF tokens, Origin/Referer validation, and careful
+  endpoint design.
+- XSS can execute code in the application origin; HttpOnly protects cookie
+  reading but does not prevent an attacker from causing actions via the page.
+
+This project: CORS allows the configured frontend origin with credentials;
+the frontend sends fetch credentials; cookie uses HttpOnly and SameSite strict.
+
+Questions:
+Q: Is CORS a security boundary for the API?
+A: No. It is mainly a browser policy. APIs must authenticate and authorize
+   requests independently.
+
+Q: What does SameSite do?
+A: It controls when browsers attach cookies to cross-site requests and can
+   reduce some CSRF risk.
+
+Q: How do cookies differ from localStorage for auth tokens?
+A: Cookies can be automatically attached and can be HttpOnly, which protects
+   token reads from JavaScript; automatic attachment brings CSRF concerns.
+   localStorage is accessible to JavaScript and vulnerable to token theft via
+   XSS. The right design depends on the threat model.
+
+
+7. VALIDATION, ERRORS, AND SECURITY
+-----------------------------------
+
+Know:
+- Validate type, presence, format, length, and allowed values server-side.
+- Normalize inputs consistently (for example, trim and lowercase email).
+- Use parameterized/structured database APIs and avoid injection.
+- Return safe public errors; log internal details without leaking secrets.
+- Rate-limit sensitive endpoints such as login and signup.
+- Use HTTPS, secure cookies, secret management, and least privilege.
+- Apply request body size limits, security headers, dependency updates, and
+  monitoring.
+- Protect against user enumeration where appropriate.
+- Avoid logging passwords, tokens, cookies, database URLs, or JWT secrets.
+
+This project: checks required signup fields, basic email format, an
+eight-character password minimum, and login required fields. Improve with
+length limits, stricter policies, rate limiting, structured logging, and
+consistent credential errors.
+
+Questions:
+Q: Why validate on the server if the frontend validates too?
+A: Clients can be bypassed or modified. The server is the trusted boundary
+   and must enforce all important rules.
+
+Q: What is injection?
+A: Attacker-controlled data changes the meaning of a command or query.
+   Use safe query APIs, validate input, and avoid constructing executable
+   query/code strings from untrusted values.
+
+Q: How should production errors be handled?
+A: Return a stable, safe response to clients; log diagnostic details
+   securely; never expose stack traces, secrets, or sensitive account data.
+
+
+8. ASYNC, RELIABILITY, AND OPERATIONS
+-------------------------------------
+
+Know:
+- Database and network calls are I/O-bound and should be awaited.
+- A service should not accept traffic before critical dependencies are ready.
+- Health/readiness endpoints help orchestration distinguish process health
+  from dependency readiness.
+- Use graceful shutdown to stop accepting requests and close DB connections.
+- Logging should be structured, correlated, useful, and free of secrets.
+- Configuration differs between development, test, and production.
+- Nodemon reloads during development; node runs the server directly.
+- package.json scripts are repeatable commands for development and start.
+
+This project: connectdb is called from the listen callback, but catches
+connection errors without failing startup. A stronger startup sequence would
+await the database connection before app.listen.
+
+Questions:
+Q: What is a health check?
+A: An endpoint or process check indicating whether the service is alive.
+   Readiness additionally indicates that it can safely receive traffic.
+
+Q: What is graceful shutdown?
+A: Stop accepting new work, finish or timeout in-flight requests, close
+   database connections, then exit cleanly.
+
+
+9. TESTING
+----------
+
+Know:
+- Unit tests isolate functions; integration tests exercise components such as
+  HTTP routes plus a database; end-to-end tests exercise user workflows.
+- Use a separate test database and deterministic fixtures.
+- Test both successful and failure paths.
+- Do not use production credentials or data in tests.
+- Mock external systems carefully; do not mock away behavior the integration
+  test is supposed to verify.
+
+Suggested tests for this project:
+- Signup missing fields, invalid email, short password, duplicate email,
+  duplicate username, and successful signup.
+- Verify stored password is not equal to the plain password and bcrypt
+  compare succeeds.
+- Login missing fields, unknown account, wrong password, and success.
+- Verify successful auth sets appropriate cookie flags.
+- Logout expires the cookie with matching options.
+- Verify database unavailable behavior.
+
+
+10. SYSTEM DESIGN BASICS
+------------------------
+
+Know:
+- Latency versus throughput; vertical versus horizontal scaling.
+- Stateless application instances are easier to scale horizontally.
+- Load balancers distribute requests; health checks remove unhealthy nodes.
+- Caching reduces repeated reads but introduces invalidation and consistency
+  questions.
+- Queues move slow or retryable work out of request-response paths.
+- Database indexes, connection pools, and query patterns affect performance.
+- Reliability includes timeouts, retries with backoff, idempotency, and
+  graceful degradation.
+- Security and observability must be designed, not added as afterthoughts.
+
+Questions:
+Q: How would you scale this authentication API?
+A: Run multiple stateless app instances behind a load balancer, centralize
+   configuration/secrets, use a managed MongoDB deployment and suitable
+   indexes/pools, add rate limiting and monitoring, and define token/session
+   behavior across instances.
+
+Q: Would you retry every failed request?
+A: No. Retry only transient failures, use bounded exponential backoff and
+   jitter, and avoid retrying non-idempotent operations unless they have an
+   idempotency mechanism.
+
+
+11. PROJECT-SPECIFIC QUESTIONS TO PRACTICE
+------------------------------------------
+
+Q: Walk me through signup.
+A: Express parses the JSON body, router selects signup, controller validates
+   and normalizes input, checks duplicates, hashes the password, writes via
+   Mongoose, signs a JWT, sets an HTTP-only cookie, and returns a safe public
+   user response.
+
+Q: Why check for an existing user and also catch MongoDB duplicate-key errors?
+A: The pre-check gives a friendly response in the common case. Concurrent
+   requests can race, so the unique index is authoritative and its duplicate
+   error must also be handled.
+
+Q: Why does the controller return only selected user fields?
+A: To avoid exposing the password hash or internal document fields and to
+   keep the API response contract intentional.
+
+Q: What happens when MongoDB is unavailable?
+A: The current helper logs a generic message and returns, so the server may
+   still start and later fail operations. Improve it by failing startup or
+   exposing not-ready status.
+
+Q: How do you know the JWT is valid on a later request?
+A: Currently the project does not check it on later requests. Add middleware
+   that reads the cookie and verifies the JWT signature and expiry.
+
+Q: Is logout complete if the cookie is cleared?
+A: It logs the browser out by removing its cookie, but a copied JWT remains
+   valid until expiry. Server-side revocation or short-lived access tokens
+   would be needed for stronger immediate invalidation.
+
+Q: What should be improved before production?
+A: Add auth middleware and protected routes, a current-user endpoint,
+   rate limits, comprehensive validation, consistent environment names,
+   DB readiness/startup handling, automated tests, secure deployment
+   configuration, CSRF strategy, and structured logging/monitoring.
+
+
+12. QUICK STUDY PLAN
+--------------------
+
+1. Explain every file in the directory map without reading from notes.
+2. Trace signup, login, and logout request/response flows.
+3. Practice the HTTP, Express middleware, MongoDB, bcrypt, JWT, cookie, CORS,
+   and error-handling questions above.
+4. Implement JWT verification middleware and GET /api/me in a branch.
+5. Add tests for successful and invalid signup/login/logout cases.
+6. Explain what happens when two signup requests use the same email at once.
+7. Explain exactly what logout does and does not invalidate.
+8. Review production secrets, HTTPS, cookie settings, rate limiting, and
+   database startup/readiness.
+
+Be precise in interviews: distinguish what the current project implements
+from what you would add next.
